@@ -1,0 +1,33 @@
+#!/bin/bash
+
+echo "Iniciando Central Perk"
+echo "============================================================"
+echo ""
+
+docker compose up --build -d
+
+echo ""
+echo "Cafeteria iniciada com sucesso!"
+echo ""
+echo "Informações:"
+echo "  Cafeteria: http://localhost:8080"
+echo "  Rede Docker: desafio1-network"
+echo "  Barista: Gunther"
+echo "  Cashback: 1% em cada compra"
+echo ""
+echo "Endpoints disponíveis:"
+echo "  • http://localhost:8080        - Fazer pedido"
+echo "  • http://localhost:8080/menu   - Ver cardápio"
+echo "  • http://localhost:8080/stats  - Ver estatísticas"
+echo "  • http://localhost:8080/health - Status da cafeteria"
+echo ""
+echo "Para ver os pedidos em tempo real:"
+echo "  ./logs.sh"
+echo ""
+echo "Para testar:"
+echo "  ./test.sh"
+echo ""
+echo "Para parar:"
+echo "  ./stop.sh"
+echo ""
+echo "============================================================"
