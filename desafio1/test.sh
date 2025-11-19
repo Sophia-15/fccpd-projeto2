@@ -30,7 +30,7 @@ echo ""
 
 echo "5. Logs dos clientes (últimas 25 linhas):"
 echo "------------------------------------------------------------"
-docker compose logs --tail=25 web-client
+docker compose  logs --tail=25 web-client
 echo ""
 echo ""
 

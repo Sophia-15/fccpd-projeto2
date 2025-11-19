@@ -4,7 +4,7 @@ echo "Iniciando Central Perk"
 echo "============================================================"
 echo ""
 
-docker compose up --build -d
+docker compose  up --build -d
 
 echo ""
 echo "Cafeteria iniciada com sucesso!"

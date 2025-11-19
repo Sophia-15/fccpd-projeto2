@@ -3,7 +3,7 @@
 echo "Fechando Central Perk..."
 echo "============================================================"
 
-docker compose down
+docker compose  down
 
 echo ""
 echo "Cafeteria fechada!"

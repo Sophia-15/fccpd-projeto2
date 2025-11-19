@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: headphones-postgres
+    environment:
+      POSTGRES_DB: headphones_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - desafio2-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  headphones-catalog:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: headphones-catalog
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: headphones_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    networks:
+      - desafio2-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  headphones-reader:
+    build:
+      context: .
+      dockerfile: Dockerfile.reader
+    container_name: headphones-reader
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: headphones_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    networks:
+      - desafio2-network
+    depends_on:
+      - headphones-catalog
+
+volumes:
+  postgres-data:
+    name: desafio2-postgres-data
+    driver: local
+
+networks:
+  desafio2-network:
+    name: desafio2-network
+    driver: bridge

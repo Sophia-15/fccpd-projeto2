@@ -12,7 +12,12 @@ Este repositório contém as soluções para os 5 desafios propostos.
 │   ├── docker-compose.yml
 │   ├── server/
 │   └── client/
-├── desafio2/                    # 🚧 Volumes e Persistência
+├── desafio2/                    # ✅ Volumes e Persistência
+│   ├── README.md
+│   ├── docker-compose.yml
+│   ├── Dockerfile
+│   ├── Dockerfile.reader
+│   └── app/
 ├── desafio3/                    # 🚧 Docker Compose Orquestrando Serviços
 ├── desafio4/                    # 🚧 Microsserviços Independentes
 └── desafio5/                    # 🚧 Microsserviços com API Gateway
@@ -39,10 +44,23 @@ cd desafio1
 
 ---
 
-### 🚧 Desafio 2 — Volumes e Persistência (20 pts)
-**Status**: Em desenvolvimento
+### ✅ Desafio 2 — Volumes e Persistência (20 pts)
+**Status**: Concluído
 
-Demonstração de persistência de dados usando volumes Docker.
+Catálogo profissional de fones de ouvido para audiófilos com persistência de dados:
+- PostgreSQL 15 Alpine com volume persistente
+- Catalog Manager para popular dados
+- Catalog Reader para verificar persistência
+- Volume Docker garantindo dados após remoção de containers
+
+[📖 Ver documentação completa](./desafio2/README.md)
+
+**Como executar**:
+```bash
+cd desafio2
+./start.sh
+./test-persistence.sh
+```
 
 ---
 
@@ -70,10 +88,12 @@ Arquitetura com API Gateway centralizando acesso aos microsserviços.
 ## 🛠️ Tecnologias Utilizadas
 
 - **Docker** & **Docker Compose**
-- **Python** (Flask)
+- **Python** (Flask, psycopg2)
+- **PostgreSQL** (15 Alpine)
 - **Shell Script**
 - **Alpine Linux**
 - **Networking** (Bridge networks)
+- **Volumes** (Persistência de dados)
 
 ## 🚀 Como Usar Este Repositório
 

@@ -6,4 +6,4 @@ echo ""
 echo "Pressione Ctrl+C para sair"
 echo ""
 
-docker compose logs -f
+docker compose  logs -f

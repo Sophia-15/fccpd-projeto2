@@ -122,7 +122,7 @@ O sistema simula uma cafeteria onde clientes fazem pedidos que são atendidos po
 
 ```
 desafio1/
-├── docker-compose.yml          # Orquestração dos serviços
+├── docker compose .yml          # Orquestração dos serviços
 ├── README.md                   # Esta documentação
 ├── start.sh                    # Inicia a cafeteria
 ├── stop.sh                     # Fecha a cafeteria
@@ -329,7 +329,7 @@ curl http://localhost:8080/health
 
 ### Docker Compose - Orquestração dos Serviços
 
-O arquivo `docker-compose.yml` define toda a infraestrutura:
+O arquivo `docker compose .yml` define toda a infraestrutura:
 
 ```yaml
 services:
@@ -442,7 +442,7 @@ docker restart desafio1-web-server
 ## ⚠️ Troubleshooting
 
 **Problema**: Porta 8080 já em uso  
-**Solução**: Altere no docker-compose.yml:
+**Solução**: Altere no docker compose .yml:
 ```yaml
 ports:
   - "8081:8080"
@@ -459,10 +459,3 @@ docker network inspect desafio1-network
 
 **Problema**: Cashback não está sendo acumulado  
 **Solução**: Os dados são mantidos em memória durante a execução. Ao reiniciar os containers, o cashback é resetado (comportamento esperado para este projeto de demonstração)
-
----
-
-**Instituição**: CESAR School  
-**Curso**: Computação em Cloud e Containers  
-**Data**: Novembro de 2025
-
