@@ -515,71 +515,6 @@ Estes dados sobrevivem a remocao dos containers da aplicacao
 
 O arquivo `docker compose .yml` define toda a infraestrutura:
 
-```yaml
-version: '3.8'
-
-services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: headphones-postgres
-    environment:
-      POSTGRES_DB: headphones_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    volumes:
-      - postgres-data:/var/lib/postgresql/data  # Volume persistente
-    networks:
-      - desafio2-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  headphones-catalog:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: headphones-catalog
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: headphones_db
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-    networks:
-      - desafio2-network
-    depends_on:
-      postgres:
-        condition: service_healthy  # Aguarda banco estar pronto
-
-  headphones-reader:
-    build:
-      context: .
-      dockerfile: Dockerfile.reader
-    container_name: headphones-reader
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: headphones_db
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-    networks:
-      - desafio2-network
-    depends_on:
-      - headphones-catalog
-
-volumes:
-  postgres-data:
-    name: desafio2-postgres-data
-    driver: local
-
-networks:
-  desafio2-network:
-    name: desafio2-network
-    driver: bridge
-```
-
 **Pontos-chave**:
 - `volumes` define o volume persistente que sobrevive aos containers
 - `healthcheck` garante que o banco está pronto antes dos apps rodarem
@@ -589,33 +524,10 @@ networks:
 
 ### Dockerfile do Catalog Manager
 
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-RUN pip install psycopg2-binary
-
-COPY app/headphones_catalog.py .
-
-CMD ["python", "headphones_catalog.py"]
-```
 
 **Funcionamento**: Container executa script Python que conecta ao PostgreSQL, cria tabela, popula dados e exibe estatísticas.
 
 ### Dockerfile do Catalog Reader
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-RUN pip install psycopg2-binary
-
-COPY app/reader.py .
-
-CMD ["python", "reader.py"]
-```
 
 **Funcionamento**: Container executa script Python que conecta ao PostgreSQL, lê todos os dados e exibe estatísticas.
 
@@ -650,104 +562,5 @@ CMD ["python", "reader.py"]
 
 ### Retry Logic - Conexão Resiliente
 
-```python
-def get_db_connection():
-    max_retries = 30
-    retry_count = 0
-    
-    while retry_count < max_retries:
-        try:
-            conn = psycopg2.connect(
-                host=DB_HOST,
-                port=DB_PORT,
-                database=DB_NAME,
-                user=DB_USER,
-                password=DB_PASSWORD
-            )
-            return conn
-        except psycopg2.OperationalError:
-            retry_count += 1
-            if retry_count >= max_retries:
-                raise
-            time.sleep(1)
-```
-
 **Funcionamento**: Tenta conectar até 30 vezes com intervalo de 1 segundo. Garante que o banco esteja pronto antes de processar dados.
 
-## 🔍 Comandos Úteis
-
-```bash
-# Ver containers rodando
-docker ps
-
-# Ver logs específicos
-docker logs headphones-postgres
-docker logs headphones-catalog
-docker logs headphones-reader
-
-# Entrar no container do PostgreSQL
-docker exec -it headphones-postgres /bin/sh
-
-# Conectar ao banco via psql
-docker exec -it headphones-postgres psql -U postgres -d headphones_db
-
-# Queries SQL diretas
-docker exec -it headphones-postgres psql -U postgres -d headphones_db -c "SELECT COUNT(*) FROM headphones;"
-docker exec -it headphones-postgres psql -U postgres -d headphones_db -c "SELECT brand, model, price FROM headphones ORDER BY price DESC;"
-
-# Inspecionar volume
-docker volume inspect desafio2-postgres-data
-
-# Ver localização dos dados no host
-docker volume inspect desafio2-postgres-data | grep Mountpoint
-
-# Verificar saúde do banco
-docker exec headphones-postgres pg_isready -U postgres
-
-# Ver estatísticas de recursos
-docker stats headphones-postgres
-
-# Inspecionar rede
-docker network inspect desafio2-network
-
-# Reiniciar container específico
-docker restart headphones-postgres
-```
-
-## ⚠️ Troubleshooting
-
-**Problema**: Container não conecta ao banco  
-**Solução**: Aguarde o health check. Verifique logs:
-```bash
-docker logs headphones-postgres
-```
-
-**Problema**: Dados duplicados no catálogo  
-**Solução**: O script adiciona dados se o catálogo estiver vazio. Para resetar:
-```bash
-docker compose down -v  # Remove volume
-./start.sh              # Recria tudo
-```
-
-**Problema**: Volume não está sendo criado  
-**Solução**: Verifique se não há erro no docker compose :
-```bash
-docker volume ls | grep desafio2
-```
-
-**Problema**: Erro "psycopg2 module not found"  
-**Solução**: Reconstrua as imagens:
-```bash
-docker compose build --no-cache
-```
-
-**Problema**: Container encerra imediatamente  
-**Solução**: Isso é esperado! Os containers catalog e reader executam uma vez e encerram. O importante é que o PostgreSQL continua rodando. Verifique os logs para ver o resultado.
-
-**Problema**: Quer limpar tudo e começar do zero  
-**Solução**:
-```bash
-docker compose down -v     # Remove containers E volume
-docker system prune -f     # Limpa imagens não usadas
-./start.sh                 # Recria ambiente limpo
-```

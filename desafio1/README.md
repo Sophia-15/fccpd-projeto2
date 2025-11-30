@@ -329,30 +329,7 @@ curl http://localhost:8080/health
 
 ### Docker Compose - Orquestração dos Serviços
 
-O arquivo `docker compose .yml` define toda a infraestrutura:
-
-```yaml
-services:
-  web-server:
-    build: ./server              # Constrói imagem do Dockerfile em server/
-    container_name: desafio1-web-server
-    ports:
-      - "8080:8080"              # Expõe porta 8080 para o host
-    networks:
-      - desafio1-network         # Conecta à rede customizada
-    
-  web-client:
-    build: ./client              # Constrói imagem do Dockerfile em client/
-    container_name: desafio1-web-client
-    depends_on:
-      - web-server               # Inicia após o servidor
-    networks:
-      - desafio1-network         # Mesma rede que o servidor
-
-networks:
-  desafio1-network:
-    driver: bridge               # Rede bridge isolada com DNS interno
-```
+O arquivo `docker compose .yml` define toda a infraestrutura.
 
 **Pontos-chave**:
 - `depends_on` garante que o servidor inicie antes do cliente
@@ -361,35 +338,9 @@ networks:
 
 ### Dockerfile do Servidor (Python + Flask)
 
-```dockerfile
-FROM python:3.11-slim            # Imagem base leve do Python
-
-WORKDIR /app                     # Define diretório de trabalho
-
-COPY requirements.txt .          # Copia arquivo de dependências
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY app.py .                    # Copia código da aplicação
-
-EXPOSE 8080                      # Documenta porta exposta
-
-CMD ["python", "app.py"]         # Comando para iniciar a API Flask
-```
-
 **Funcionamento**: Container roda a API Flask que processa pedidos, calcula cashback e mantém estado em memória.
 
 ### Dockerfile do Cliente (Alpine + Shell Script)
-
-```dockerfile
-FROM alpine:3.19                 # Imagem minimalista Linux
-
-RUN apk add --no-cache curl bash python3   # Instala ferramentas necessárias
-
-COPY client.sh /client.sh        # Copia script de automação
-RUN chmod +x /client.sh          # Torna executável
-
-CMD ["/client.sh"]               # Executa script em loop infinito
-```
 
 **Funcionamento**: Container executa script bash que faz requisições HTTP a cada 5 segundos para `http://web-server:8080`.
 
@@ -412,50 +363,3 @@ CMD ["/client.sh"]               # Executa script em loop infinito
 4. Cliente formata resposta e aguarda 5 segundos
 5. Ciclo se repete
 
-## 🔍 Comandos Úteis
-
-```bash
-# Ver containers rodando
-docker ps
-
-# Ver logs específicos
-docker logs desafio1-web-server
-docker logs desafio1-web-client
-
-# Entrar no container
-docker exec -it desafio1-web-server sh
-docker exec -it desafio1-web-client sh
-
-# Testar DNS interno
-docker exec desafio1-web-client ping -c 2 web-server
-
-# Ver estatísticas de recursos
-docker stats desafio1-web-server desafio1-web-client
-
-# Inspecionar rede
-docker network inspect desafio1-network
-
-# Reiniciar container específico
-docker restart desafio1-web-server
-```
-
-## ⚠️ Troubleshooting
-
-**Problema**: Porta 8080 já em uso  
-**Solução**: Altere no docker compose .yml:
-```yaml
-ports:
-  - "8081:8080"
-```
-
-**Problema**: Containers não se comunicam  
-**Solução**: Verifique se estão na mesma rede:
-```bash
-docker network inspect desafio1-network
-```
-
-**Problema**: JSON não está formatado no cliente  
-**Solução**: Verifique se python3 está instalado no Dockerfile do cliente
-
-**Problema**: Cashback não está sendo acumulado  
-**Solução**: Os dados são mantidos em memória durante a execução. Ao reiniciar os containers, o cashback é resetado (comportamento esperado para este projeto de demonstração)
