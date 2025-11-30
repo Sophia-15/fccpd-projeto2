@@ -1,0 +1,34 @@
+services:
+  garage-service:
+    build:
+      context: ./garage-service
+      dockerfile: Dockerfile
+    container_name: garage-service
+    ports:
+      - "5100:5100"
+    networks:
+      - garage-network
+    environment:
+      - PORT=5100
+    restart: unless-stopped
+
+  analytics-service:
+    build:
+      context: ./analytics-service
+      dockerfile: Dockerfile
+    container_name: analytics-service
+    ports:
+      - "5101:5101"
+    networks:
+      - garage-network
+    environment:
+      - PORT=5101
+      - GARAGE_SERVICE_URL=http://garage-service:5100
+    depends_on:
+      - garage-service
+    restart: unless-stopped
+
+networks:
+  garage-network:
+    name: garage-network
+    driver: bridge
