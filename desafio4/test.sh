@@ -1,17 +1,15 @@
 #!/bin/bash
 
-# Colors for output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # No Color
+NC='\033[0m' 
 
 echo "🧪 Testando Forza Garage - Microsserviços"
 echo "============================================================"
 echo ""
 
-# Check if services are running
 echo -e "${BLUE}Verificando se os serviços estão rodando...${NC}"
 if ! docker ps | grep -q "garage-service"; then
     echo -e "${RED}❌ Garage Service não está rodando!${NC}"
@@ -29,7 +27,6 @@ echo -e "${GREEN}✅ Ambos os serviços estão rodando${NC}"
 echo ""
 sleep 2
 
-# Function to test endpoint
 test_endpoint() {
     local name=$1
     local url=$2
@@ -58,7 +55,6 @@ test_endpoint() {
         echo -e "${RED}❌ Status: ${http_code}${NC}"
     fi
     
-    # Pretty print JSON (if jq is available)
     if command -v jq &> /dev/null; then
         echo "$body" | jq '.'
     else
@@ -89,7 +85,6 @@ test_endpoint "5. Health check do Garage" "http://localhost:5100/health"
 echo -e "${YELLOW}Testando operações CRUD...${NC}"
 echo ""
 
-# Create a new car
 new_car='{
   "manufacturer": "Bugatti",
   "model": "Chiron Super Sport",
@@ -104,7 +99,6 @@ new_car='{
 
 test_endpoint "6. Adicionar novo carro (POST)" "http://localhost:5100/cars" "POST" "$new_car"
 
-# Update the car (assuming it got ID 11)
 update_data='{"status": "racing"}'
 test_endpoint "7. Atualizar status do carro (PUT)" "http://localhost:5100/cars/11" "PUT" "$update_data"
 
@@ -137,8 +131,6 @@ echo ""
 echo "Analytics Service (5101) → Garage Service (5100)"
 echo ""
 
-# The analytics service calls the garage service internally
-# We can verify this by checking the health endpoint
 echo -e "${YELLOW}O endpoint /health do Analytics verifica o Garage:${NC}"
 test_endpoint "15. Health check que testa ambos os serviços" "http://localhost:5101/health"
 

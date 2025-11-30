@@ -1,67 +1,206 @@
 # Desafio 2 — Volumes e Persistência: AudioFile Vault 🎧
 
-## 📋 Descrição da Solução
+## 1. Descrição Geral da Solução
 
-Este projeto implementa um **catálogo profissional de fones de ouvido para audiófilos**, utilizando três containers Docker e um volume persistente:
+### 1.1 Proposta do Desafio
 
-1. **Banco de Dados (PostgreSQL)**: Armazena especificações técnicas detalhadas de headphones premium
-2. **Catalog Manager**: Popula e gerencia os dados do catálogo
-3. **Catalog Reader**: Lê e verifica os dados persistidos
-4. **Volume Docker**: Garante que os dados sobrevivam à remoção dos containers
+Este desafio demonstra o uso de **volumes Docker para persistência de dados**. O objetivo é criar um sistema onde dados gravados em um banco de dados PostgreSQL sobrevivem à remoção e recriação dos containers, garantindo que informações não sejam perdidas mesmo após `docker-compose down`.
 
-### 🎵 Tema: Catálogo Audiófilo
+A implementação explora conceitos essenciais de Docker: volumes nomeados, ciclo de vida de dados independente dos containers, e a diferença crucial entre armazenamento efêmero (dentro do container) e persistente (volumes externos).
 
-O sistema mantém um inventário detalhado de fones de ouvido premium, com especificações técnicas reais como impedância, drivers, sensibilidade e assinatura sonora. Ideal para entusiastas de áudio que buscam informações precisas sobre equipamentos high-end.
+### 1.2 Arquitetura Utilizada
 
-## 🏗️ Arquitetura
+A solução é composta por **quatro componentes principais**:
 
+**1. Container PostgreSQL (headphones-postgres)**
+- **Imagem base**: postgres:15-alpine
+- **Função**: Banco de dados relacional que armazena catálogo de fones de ouvido
+- **Porta interna**: 5432 (NÃO exposta ao host - comunicação apenas interna)
+- **Armazenamento**: Volume Docker montado em `/var/lib/postgresql/data`
+- **Health Check**: Verifica disponibilidade com `pg_isready`
+
+**2. Container Catalog Manager (headphones-catalog)**
+- **Imagem base**: Python 3.11-slim
+- **Framework**: psycopg2 (driver PostgreSQL para Python)
+- **Função**: Inicializa banco, popula com 8 fones premium, exibe catálogo e estatísticas
+- **Comportamento**: Executa uma vez e encerra (não fica em loop)
+- **Retry Logic**: Aguarda até 30 segundos para PostgreSQL ficar pronto
+
+**3. Container Catalog Reader (headphones-reader)**
+- **Imagem base**: Python 3.11-slim
+- **Função**: Lê e verifica dados persistidos no banco
+- **Objetivo**: Demonstrar que dados ainda existem após reinicialização
+
+**4. Volume Docker (postgres-data)**
+- **Tipo**: Volume nomeado (gerenciado pelo Docker)
+- **Montagem**: `/var/lib/postgresql/data` (diretório padrão do PostgreSQL)
+- **Característica chave**: **Sobrevive a `docker-compose down`**
+- **Localização física**: `/var/lib/docker/volumes/postgres-data/_data` (no host)
+
+### 1.3 Decisões Técnicas e Justificativas
+
+**Por que PostgreSQL?**
+PostgreSQL é um banco de dados robusto, open-source e amplamente usado em produção. A versão Alpine (15-alpine) foi escolhida por ser mínima (~80MB vs ~350MB da versão padrão), demonstrando boas práticas de otimização de imagens Docker.
+
+**Por que psycopg2?**
+Psycopg2 é o driver PostgreSQL mais usado em Python, maduro e eficiente. Possui suporte completo a tipos PostgreSQL e é mais rápido que alternativas asyncpg para casos síncronos simples.
+
+**Por que um volume nomeado (não bind mount)?**
+Volumes nomeados são gerenciados pelo Docker e funcionam consistentemente em Linux, macOS e Windows. Bind mounts dependem de caminhos do host e podem ter problemas de permissão. Para dados de banco, volumes nomeados são best practice.
+
+**Por que a porta 5432 NÃO está mapeada para o host?**
+Não há necessidade de acesso externo ao PostgreSQL neste desafio. Manter a porta apenas na rede interna é uma **boa prática de segurança**: reduz a superfície de ataque e evita conflitos de porta no host.
+
+**Por que retry logic no Catalog Manager?**
+`depends_on` garante apenas que o container PostgreSQL **iniciou**, não que o servidor está pronto para aceitar conexões. O retry loop aguarda até o banco estar realmente operacional antes de tentar a conexão.
+
+**Organização do projeto:**
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│              Rede: desafio2-network (bridge)                    │
-│                                                                 │
-│  ┌────────────────────────┐       ┌────────────────────────┐  │
-│  │   headphones-catalog   │       │   headphones-postgres  │  │
-│  │   (Popula dados)       │──────▶│   🗄️ PostgreSQL 15    │  │
-│  │   🐍 Python + psycopg2│       │   Port: 5432           │  │
-│  └────────────────────────┘       │   DB: headphones_db    │  │
-│                                   └──────────┬─────────────┘  │
-│  ┌────────────────────────┐                 │                 │
-│  │   headphones-reader    │                 │                 │
-│  │   (Lê dados)           │─────────────────┘                 │
-│  │   📖 Python + psycopg2│                                    │
-│  └────────────────────────┘                                   │
-│                                    │                           │
-└────────────────────────────────────┼───────────────────────────┘
-                                     │
-                          💾 desafio2-postgres-data
-                               (Docker Volume)
-                        /var/lib/postgresql/data
-                              ↓
-                    Dados persistem após remoção
-                        dos containers!
+desafio2/
+├── docker-compose.yml          # Orquestração (3 containers + 1 volume)
+├── Dockerfile                  # Build do Catalog Manager
+├── Dockerfile.reader           # Build do Catalog Reader
+├── start.sh, stop.sh, logs.sh  # Scripts de gerenciamento
+├── test-persistence.sh         # Testa persistência de dados
+└── app/
+    ├── headphones_catalog.py   # Popula banco com catálogo
+    └── reader.py               # Lê dados do banco
 ```
 
-## 🔧 Componentes Técnicos
+### 1.4 Tema: AudioFile Vault
 
-### 1. Banco de Dados - PostgreSQL (headphones-postgres)
+O sistema gerencia um **catálogo profissional de fones de ouvido para audiófilos**, com especificações técnicas reais:
 
-**Tecnologia**: PostgreSQL 15 Alpine
+**8 Fones Premium Cadastrados:**
+- Sennheiser HD 800 S ($1,699.99) - 300Ω - Open-back
+- Focal Clear MG ($1,490.00) - 55Ω - Open-back
+- Audeze LCD-X ($1,199.00) - 20Ω - Planar Magnetic
+- Beyerdynamic DT 1990 Pro ($599.00) - 250Ω - Open-back
+- Hifiman Arya ($1,299.00) - 35Ω - Planar Magnetic
+- Audio-Technica ATH-R70x ($349.00) - 470Ω - Open-back
+- AKG K702 ($199.00) - 62Ω - Open-back
+- Shure SRH1840 ($699.00) - 65Ω - Open-back
 
-**Funcionalidades**:
-- **Volume Persistente**: Dados armazenados em volume Docker externo
-- **Health Check**: Monitora disponibilidade do banco
-- **Schema Completo**: 13 campos técnicos por headphone
-- **Isolamento**: Rede privada para segurança
+**13 Campos Técnicos por Headphone:**
+- Marca, modelo, tipo (open-back/closed-back/planar)
+- Tamanho do driver (mm), impedância (Ω), sensibilidade (dB)
+- Resposta de frequência, tipo de cabo
+- Peso (gramas), preço, assinatura sonora
+- Notas adicionais, timestamp de criação
 
-**Configuração**:
-- Database: `headphones_db`
-- User: `postgres`
-- Password: `postgres`
-- Port: `5432`
+## 2. Explicação Detalhada do Funcionamento
 
-**Schema da Tabela**:
+### 2.1 Fluxo Completo de Inicialização
+
+**1. Docker Compose Sobe os Serviços:**
+```bash
+docker-compose up -d
+```
+
+**Ordem de inicialização (definida por `depends_on` e `condition`):**
+```
+postgres (com healthcheck)
+    ↓ (aguarda status healthy)
+headphones-catalog
+    ↓ (aguarda término da execução)
+headphones-reader
+```
+
+**2. PostgreSQL Inicializa:**
+- Container `headphones-postgres` inicia
+- PostgreSQL cria diretórios em `/var/lib/postgresql/data`
+- Estes dados são gravados no volume `postgres-data` (não no container)
+- Health check executa `pg_isready -U postgres` a cada 5s
+- Após 5 verificações bem-sucedidas, status = `healthy`
+
+**3. Catalog Manager Executa:**
+- Aguarda PostgreSQL ficar `healthy`
+- Conecta ao banco: `host=postgres, port=5432, database=headphones_db`
+- Executa `init_database()`: cria tabela `headphones` se não existir
+- Verifica se tabela está vazia (`SELECT COUNT(*)`)
+- Se vazia: popula com 8 fones premium
+- Se já tem dados: exibe mensagem "Database already populated"
+- Imprime catálogo completo formatado
+- Gera estatísticas (preço médio, impedância média, etc.)
+- Container encerra (exit code 0)
+
+**4. Catalog Reader Executa:**
+- Conecta ao mesmo banco
+- Lê todos os registros: `SELECT * FROM headphones ORDER BY price DESC`
+- Exibe catálogo ordenado por preço (mais caro primeiro)
+- Mostra total de registros
+- Container encerra
+
+### 2.2 PostgreSQL Container - Detalhes Técnicos
+
+**Variáveis de Ambiente:**
+```yaml
+environment:
+  POSTGRES_DB: headphones_db      # Cria database automaticamente
+  POSTGRES_USER: postgres         # Usuário superadmin
+  POSTGRES_PASSWORD: postgres     # Senha (não usar em produção!)
+```
+
+**Volume Mount:**
+```yaml
+volumes:
+  - postgres-data:/var/lib/postgresql/data
+```
+
+**O que isso faz:**
+- Docker cria volume nomeado `postgres-data` (se não existir)
+- Monta volume dentro do container em `/var/lib/postgresql/data`
+- PostgreSQL grava todos os dados (tabelas, índices, WAL) neste diretório
+- Quando container é removido, dados **permanecem no volume**
+
+**Health Check:**
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "pg_isready -U postgres"]
+  interval: 5s
+  timeout: 5s
+  retries: 5
+```
+
+**Como funciona:**
+- A cada 5 segundos, executa `pg_isready`
+- Se retornar exit code 0: incrementa contador de sucesso
+- Após 5 sucessos consecutivos: status = `healthy`
+- Outros containers com `depends_on: condition: service_healthy` aguardam este status
+
+### 2.3 Catalog Manager - Lógica de População
+
+**Conexão com Retry Logic:**
+```python
+def get_db_connection():
+    max_retries = 30
+    retry_count = 0
+    
+    while retry_count < max_retries:
+        try:
+            conn = psycopg2.connect(
+                host="postgres",  # DNS interno Docker
+                port="5432",
+                database="headphones_db",
+                user="postgres",
+                password="postgres"
+            )
+            return conn
+        except psycopg2.OperationalError:
+            retry_count += 1
+            time.sleep(1)  # Aguarda 1 segundo antes de tentar novamente
+    
+    raise Exception("Could not connect after 30 attempts")
+```
+
+**Por que isso é necessário:**
+- Health check marca PostgreSQL como `healthy` assim que aceita conexões
+- Mas o banco pode ainda estar finalizando inicialização interna
+- Retry logic adiciona margem de segurança
+
+**Criação da Tabela:**
 ```sql
-CREATE TABLE headphones (
+CREATE TABLE IF NOT EXISTS headphones (
     id SERIAL PRIMARY KEY,
     brand VARCHAR(100) NOT NULL,
     model VARCHAR(100) NOT NULL,
@@ -79,488 +218,532 @@ CREATE TABLE headphones (
 );
 ```
 
-### 2. Catalog Manager - Gerenciamento de Dados (headphones-catalog)
+**Verificação de População:**
+```python
+cursor.execute("SELECT COUNT(*) FROM headphones")
+count = cursor.fetchone()[0]
 
-**Tecnologia**: Python 3.11 + psycopg2
-
-**Funcionalidades**:
-- Inicializa o banco de dados
-- Popula com 8 fones premium
-- Exibe catálogo completo
-- Gera estatísticas
-- Retry logic para aguardar banco
-
-**Catálogo Inicial** (8 fones premium):
-
-| Marca | Modelo | Preço | Impedância | Tipo |
-|-------|--------|-------|------------|------|
-| Sennheiser | HD 800 S | $1,699.99 | 300Ω | Open-back |
-| Focal | Clear MG | $1,490.00 | 55Ω | Open-back |
-| Audeze | LCD-X | $1,199.00 | 20Ω | Open-back (Planar) |
-| Beyerdynamic | DT 1990 Pro | $599.00 | 250Ω | Open-back |
-| HiFiMAN | Arya Stealth | $1,299.00 | 32Ω | Open-back (Planar) |
-| AKG | K701 | $249.00 | 62Ω | Open-back |
-| Audio-Technica | ATH-M50x | $149.00 | 38Ω | Closed-back |
-| Sony | MDR-Z7M2 | $899.00 | 70Ω | Closed-back |
-
-**Especificações Técnicas**:
-- Driver Size: Tamanho do driver em mm
-- Impedance: Impedância em Ohms (afeta amplificação necessária)
-- Sensitivity: Sensibilidade em dB (eficiência)
-- Frequency Response: Faixa de resposta (ex: 4Hz - 51kHz)
-- Cable Type: Tipo de cabo (destacável, fixo, balanceado)
-- Sound Signature: Perfil sonoro (Neutral, Bright, Warm, V-shaped)
-
-### 3. Catalog Reader - Leitura de Dados (headphones-reader)
-
-**Tecnologia**: Python 3.11 + psycopg2
-
-**Funcionalidades**:
-- Conecta ao mesmo banco de dados
-- Lê todos os dados persistidos
-- Exibe resumo estatístico
-- Verifica integridade dos dados
-- Comprova persistência
-
-**Estatísticas Geradas**:
-- Total de fones cadastrados
-- Preço médio do catálogo
-- Fone mais barato / mais caro
-- Listagem completa com specs
-
-### 4. Volume Docker - Persistência
-
-**Nome**: `desafio2-postgres-data`  
-**Driver**: local  
-**Montagem**: `/var/lib/postgresql/data`  
-**Características**:
-- Dados independentes dos containers
-- Sobrevive a `docker compose down`
-- Apenas removido com flag `-v`
-- Isolado do filesystem do container
-
-## 🎮 Como Funciona
-
-### Fluxo de Dados
-
-1. **Inicialização**:
-   - PostgreSQL inicia e cria volume persistente
-   - Health check garante que banco está pronto
-   - Catalog Manager aguarda disponibilidade (retry logic)
-
-2. **População**:
-   - Catalog Manager conecta ao banco
-   - Cria tabela `headphones` se não existir
-   - Verifica se dados já existem
-   - Popula com 8 fones premium (se vazio)
-   - Exibe catálogo completo
-
-3. **Leitura**:
-   - Catalog Reader conecta ao banco
-   - Lê todos os registros
-   - Calcula estatísticas (média, min, max)
-   - Exibe dados formatados
-
-4. **Persistência**:
-   - Dados ficam no volume Docker
-   - Containers podem ser removidos
-   - Volume permanece intacto
-   - Ao recriar containers, dados continuam lá
-
-### Sistema de Persistência
-
-- **Volume Nomeado**: `desafio2-postgres-data` facilita identificação
-- **Localização Host**: `/var/lib/docker/volumes/desafio2-postgres-data`
-- **Lifecycle**: Independente dos containers
-- **Compartilhamento**: Múltiplos containers podem montar o mesmo volume
-- **Backup**: Pode ser copiado/exportado do host
-
-## 📦 Estrutura de Arquivos
-
-```
-desafio2/
-├── docker compose .yml          # Orquestração dos serviços + volume
-├── README.md                   # Esta documentação
-├── start.sh                    # Inicia o catálogo
-├── stop.sh                     # Para os containers (mantém volume)
-├── logs.sh                     # Visualiza logs dos containers
-├── test-persistence.sh         # Testa persistência dos dados
-├── app/
-│   ├── headphones_catalog.py  # Script de gerenciamento
-│   └── reader.py              # Script de leitura
-├── Dockerfile                  # Imagem do Catalog Manager
-└── Dockerfile.reader          # Imagem do Catalog Reader
+if count == 0:
+    # Insere 8 fones premium
+    sample_headphones = [ ... ]
+    for hp in sample_headphones:
+        cursor.execute("INSERT INTO headphones (...) VALUES (...)", hp)
+    conn.commit()
+    print("✅ 8 headphones added successfully!")
+else:
+    print(f"ℹ️  Database already has {count} headphones")
 ```
 
-## 🚀 Instruções de Execução
+**Saída Formatada:**
+```
+🎧 AUDIOFILE VAULT - Premium Headphones Catalog
+==============================================
 
-### Pré-requisitos
+📋 CATALOG (8 headphones):
 
-- Docker 20.10+
-- Docker Compose 2.0+
-- Sistema: Linux, macOS ou Windows com WSL2
+1. Sennheiser HD 800 S
+   Type: Open-back | Driver: 56mm | Impedance: 300Ω
+   Frequency: 4-51000 Hz | Weight: 330g
+   💰 Price: $1,699.99 | Sound: Analytical, Neutral
 
-### Passo 1: Acessar o Projeto
+2. Focal Clear MG
+   ...
 
+📊 STATISTICS:
+   Total Headphones: 8
+   Average Price: $879.87
+   Average Impedance: 158Ω
+   Price Range: $199.00 - $1,699.99
+```
+
+### 2.4 Catalog Reader - Verificação de Persistência
+
+**Função do Reader:**
+```python
+conn = get_db_connection()
+cursor = conn.cursor()
+
+cursor.execute("""
+    SELECT brand, model, price, impedance, type 
+    FROM headphones 
+    ORDER BY price DESC
+""")
+
+headphones = cursor.fetchall()
+
+for hp in headphones:
+    print(f"  {hp[0]} {hp[1]} - ${hp[2]} - {hp[3]}Ω - {hp[4]}")
+
+print(f"\n✅ Total: {len(headphones)} headphones found in database")
+```
+
+**Saída Esperada:**
+```
+📖 READING AUDIOFILE VAULT DATABASE
+====================================
+
+Headphones (ordered by price):
+  Sennheiser HD 800 S - $1699.99 - 300Ω - Open-back
+  Focal Clear MG - $1490.00 - 55Ω - Open-back
+  Hifiman Arya - $1299.00 - 35Ω - Planar Magnetic
+  ...
+
+✅ Total: 8 headphones found in database
+```
+
+### 2.5 Persistência de Dados - Como Funciona na Prática
+
+**Cenário 1: Primeira Execução**
 ```bash
-cd desafio2
+./start.sh
+```
+```
+1. Volume `postgres-data` não existe → Docker cria
+2. PostgreSQL inicializa banco vazio
+3. Catalog Manager popula com 8 fones
+4. Dados são gravados no volume
+5. Reader lê os dados
 ```
 
-### Passo 2: Dar Permissões aos Scripts
+**Cenário 2: Parar e Reiniciar Containers**
+```bash
+docker-compose down  # Remove containers
+docker-compose up -d # Recria containers
+```
+```
+1. Containers são deletados
+2. Volume `postgres-data` PERMANECE intacto
+3. PostgreSQL monta volume existente
+4. Dados já estão lá!
+5. Catalog Manager detecta 8 fones existentes → não reinsere
+6. Reader lê os mesmos 8 fones
+```
 
+**Cenário 3: Verificar Persistência (script automático)**
+```bash
+./test-persistence.sh
+```
+```
+Etapas do script:
+1. Para containers: docker-compose down
+2. Remove containers: docker rm -f ...
+3. Verifica volume existe: docker volume inspect postgres-data
+4. Sobe novamente: docker-compose up -d
+5. Aguarda inicialização
+6. Verifica logs do reader (deve mostrar 8 headphones)
+7. ✅ Se encontrou dados = persistência funciona!
+```
+
+### 2.6 Rede Docker e Comunicação Interna
+
+**Rede Criada:**
+```yaml
+networks:
+  desafio2-network:
+    name: desafio2-network
+    driver: bridge
+```
+
+**Containers na Rede:**
+- `headphones-postgres` (IP: 172.19.0.2)
+- `headphones-catalog` (IP: 172.19.0.3)
+- `headphones-reader` (IP: 172.19.0.4)
+
+**Resolução de DNS:**
+```python
+# No código Python:
+conn = psycopg2.connect(host="postgres", ...)
+```
+- DNS interno Docker resolve "postgres" → IP do container `headphones-postgres`
+- Conexão é roteada internamente pela bridge
+- Porta 5432 está acessível dentro da rede (não exposta ao host)
+
+**Por que não há port mapping:**
+```yaml
+postgres:
+  ports: []  # NENHUMA porta mapeada!
+```
+- PostgreSQL só precisa ser acessado pelos containers Python
+- Não há necessidade de acesso externo
+- **Segurança**: banco não fica exposto no host
+
+### 2.7 Logs e Observabilidade
+
+**Logs Esperados - PostgreSQL:**
+```
+PostgreSQL Database directory appears to contain a database; Skipping initialization
+LOG:  database system was shut down at 2025-11-30 14:20:00 UTC
+LOG:  database system is ready to accept connections
+```
+
+**Logs Esperados - Catalog Manager:**
+```
+Connecting to PostgreSQL...
+✅ Connected successfully!
+ℹ️  Database already has 8 headphones
+📋 CATALOG (8 headphones):
+...
+📊 STATISTICS:
+   Average Price: $879.87
+```
+
+**Logs Esperados - Catalog Reader:**
+```
+📖 READING AUDIOFILE VAULT DATABASE
+====================================
+Headphones (ordered by price):
+  Sennheiser HD 800 S - $1699.99 - 300Ω - Open-back
+  ...
+✅ Total: 8 headphones found in database
+```
+
+**Comandos para visualizar logs:**
+```bash
+# Todos os logs
+docker-compose logs
+
+# Apenas PostgreSQL
+docker-compose logs postgres
+
+# Apenas Catalog Manager
+docker-compose logs headphones-catalog
+
+# Logs em tempo real
+docker-compose logs -f
+```
+
+## 3. Instruções de Execução – Passo a Passo
+
+### 3.1 Pré-requisitos
+
+**Software necessário:**
+- Docker Engine 20.10 ou superior
+- Docker Compose 1.29 ou superior (ou Compose V2)
+- Sistema operacional: Linux, macOS ou Windows com WSL2
+
+**Verificar instalação:**
+```bash
+docker --version
+docker-compose --version
+```
+
+### 3.2 Preparação do Ambiente
+
+**1. Navegar até o diretório do desafio:**
+```bash
+cd /caminho/para/desafio2
+```
+
+**2. Verificar estrutura:**
+```bash
+ls -la
+# Deve conter: docker-compose.yml, Dockerfile, Dockerfile.reader, app/
+```
+
+**3. Tornar scripts executáveis:**
 ```bash
 chmod +x *.sh
 ```
 
-### Passo 3: Iniciar o Catálogo
+### 3.3 Primeira Execução - Inicializar Sistema
 
+**Subir containers:**
 ```bash
 ./start.sh
+# OU manualmente:
+docker-compose up -d
 ```
 
-**Saída esperada**:
+**Saída esperada:**
 ```
-Iniciando Desafio 2 - Docker Volumes e Persistencia
-==================================================
-Construindo imagens Docker...
-[+] Building 8.3s
+Creating network "desafio2-network" with driver "bridge"
+Creating volume "postgres-data" with default driver
+Creating headphones-postgres ... done
+Creating headphones-catalog ... done
+Creating headphones-reader ... done
 
-Iniciando containers...
-[+] Running 4/4
- ✔ Network desafio2-network          Created
- ✔ Volume desafio2-postgres-data     Created
- ✔ Container headphones-postgres     Started
- ✔ Container headphones-catalog      Started
- ✔ Container headphones-reader       Started
-
-Containers iniciados!
-
-Status dos containers:
-NAME                   IMAGE              STATUS
-headphones-postgres    postgres:15-alpine healthy
-headphones-catalog     desafio2-catalog   exited
-headphones-reader      desafio2-reader    exited
-
-Volume criado:
-desafio2-postgres-data
-
-==================================================
-Desafio 2 rodando!
-==================================================
+🎧 AudioFile Vault iniciado com sucesso!
+💾 Volume postgres-data criado
+📊 Verificando logs...
 ```
 
-### Passo 4: Ver Logs dos Containers
-
+**Verificar containers:**
 ```bash
-./logs.sh
+docker-compose ps
 ```
 
-**Exemplo de logs**:
+**Saída esperada:**
 ```
-Container: postgres
----------------------------------
-PostgreSQL init process complete; ready for start up.
-LOG: database system is ready to accept connections
-
-Container: headphones-catalog
----------------------------------
-================================================================================
-SISTEMA DE CATALOGO DE FONES DE OUVIDO AUDIOFILO
-================================================================================
-Banco de dados: postgres:5432/headphones_db
-
-Banco de dados inicializado: postgres:5432/headphones_db
-
-Fones no catalogo: 0
-
-Catalogo vazio. Adicionando dados de exemplo...
-Fone adicionado: Sennheiser HD 800 S (ID: 1)
-Fone adicionado: Focal Clear MG (ID: 2)
-...
-
-Container: headphones-reader
---------------------------------
-================================================================================
-LENDO CATALOGO DE FONES DE OUVIDO (CONTAINER LEITOR)
-================================================================================
-Conectando a: postgres:5432/headphones_db
-
-Total de fones encontrados: 8
-
-01 | Sennheiser HD 800 S
-   Open-back Over-ear
-   56mm | 300ohms | 102dB
-   $1699.99 | Neutral/Analytical
-...
+NAME                    STATUS                    PORTS
+headphones-postgres     Up (healthy)              5432/tcp
+headphones-catalog      Exited (0)                
+headphones-reader       Exited (0)                
 ```
 
-### Passo 5: Testar Persistência
+**Importante:**
+- `postgres`: fica rodando (banco de dados)
+- `catalog` e `reader`: executam e encerram (exit 0 = sucesso)
 
+### 3.4 Verificar Logs de População
+
+**Ver logs do Catalog Manager:**
+```bash
+docker-compose logs headphones-catalog
+```
+
+**Deve mostrar:**
+```
+✅ Connected to PostgreSQL successfully!
+✅ Database initialized
+✅ 8 headphones added successfully!
+
+🎧 AUDIOFILE VAULT - Premium Headphones Catalog
+================================================
+
+📋 CATALOG (8 headphones):
+
+1. Sennheiser HD 800 S
+   Type: Open-back | Driver: 56mm | Impedance: 300Ω
+   💰 Price: $1,699.99
+
+[... outros 7 fones ...]
+
+📊 STATISTICS:
+   Total Headphones: 8
+   Average Price: $879.87
+   Average Impedance: 158Ω
+```
+
+**Ver logs do Reader:**
+```bash
+docker-compose logs headphones-reader
+```
+
+**Deve mostrar:**
+```
+📖 READING AUDIOFILE VAULT DATABASE
+====================================
+
+Headphones (ordered by price):
+  Sennheiser HD 800 S - $1699.99 - 300Ω - Open-back
+  Focal Clear MG - $1490.00 - 55Ω - Open-back
+  [... outros 6 ...]
+
+✅ Total: 8 headphones found in database
+```
+
+### 3.5 Testar Persistência de Dados
+
+**Executar teste automatizado:**
 ```bash
 ./test-persistence.sh
 ```
 
-Este script **demonstra a persistência** através dos seguintes passos:
-
-1. Cria dados iniciais no banco
-2. **Remove os containers da aplicação** (catalog e reader)
+**O script faz:**
+1. Para todos os containers
+2. Remove containers
 3. Verifica que o volume ainda existe
-4. Recria os containers
-5. **Comprova que os mesmos dados continuam lá!**
+4. Sobe os containers novamente
+5. Verifica logs do reader
+6. Confirma que os 8 headphones ainda estão lá
 
-**Saída esperada**:
+**Saída esperada:**
 ```
-TESTE DE PERSISTENCIA - Desafio 2
-==================================================
+🧪 TESTE DE PERSISTÊNCIA
+=======================
 
-PASSO 1: Criando dados iniciais...
-(8 fones adicionados)
+1️⃣  Parando containers...
+✅ Containers parados
 
-Pressione Enter para continuar...
+2️⃣  Removendo containers...
+✅ Containers removidos
 
-PASSO 2: Removendo containers da aplicacao...
-headphones-catalog
-headphones-reader
-Containers da aplicacao removidos!
+3️⃣  Verificando volume...
+✅ Volume postgres-data ainda existe!
 
-Pressione Enter para continuar...
+4️⃣  Recriando containers...
+✅ Containers recriados
 
-PASSO 3: Verificando que o volume ainda existe...
-local     desafio2-postgres-data
+5️⃣  Aguardando inicialização... (10s)
 
-Pressione Enter para continuar...
+6️⃣  Verificando dados no banco...
+✅ Total: 8 headphones found in database
 
-PASSO 4: Recriando os containers da aplicacao...
-Container headphones-catalog  Started
-Container headphones-reader   Started
-
-PASSO 5: Verificando que os dados PERSISTIRAM...
-==================================================
-Total de fones encontrados: 8
-(mesmos 8 fones aparecem!)
-==================================================
-
-SUCESSO! Os dados sobreviveram a remocao dos containers!
+✅ ✅ ✅ PERSISTÊNCIA FUNCIONANDO! ✅ ✅ ✅
+Os dados sobreviveram à remoção dos containers!
 ```
 
-### Passo 6: Parar os Containers
+### 3.6 Teste Manual de Persistência
 
+**1. Verificar dados atuais:**
+```bash
+docker-compose logs headphones-reader | grep "Total:"
+# ✅ Total: 8 headphones found in database
+```
+
+**2. Parar e remover containers:**
+```bash
+docker-compose down
+# Stopping headphones-postgres ... done
+# Removing headphones-postgres ... done
+# Removing headphones-catalog ... done
+# Removing headphones-reader ... done
+# Removing network desafio2-network
+```
+
+**3. Verificar que volume AINDA EXISTE:**
+```bash
+docker volume ls | grep postgres-data
+# local     postgres-data
+```
+
+**4. Inspecionar volume:**
+```bash
+docker volume inspect postgres-data
+```
+
+**Saída:**
+```json
+[
+    {
+        "Name": "postgres-data",
+        "Driver": "local",
+        "Mountpoint": "/var/lib/docker/volumes/postgres-data/_data",
+        "CreatedAt": "2025-11-30T14:20:00Z"
+    }
+]
+```
+
+**5. Subir containers novamente:**
+```bash
+docker-compose up -d
+```
+
+**6. Verificar logs - deve mostrar dados existentes:**
+```bash
+docker-compose logs headphones-catalog
+# ℹ️  Database already has 8 headphones
+```
+
+**7. Verificar reader - dados estão intactos:**
+```bash
+docker-compose logs headphones-reader
+# ✅ Total: 8 headphones found in database
+```
+
+### 3.7 Acessar PostgreSQL Diretamente (Debug)
+
+**Entrar no container PostgreSQL:**
+```bash
+docker exec -it headphones-postgres psql -U postgres -d headphones_db
+```
+
+**Comandos úteis no psql:**
+```sql
+-- Listar tabelas
+\dt
+
+-- Ver estrutura da tabela
+\d headphones
+
+-- Contar registros
+SELECT COUNT(*) FROM headphones;
+
+-- Listar todos os fones
+SELECT brand, model, price FROM headphones ORDER BY price DESC;
+
+-- Ver estatísticas
+SELECT 
+    COUNT(*) as total,
+    AVG(price) as avg_price,
+    AVG(impedance) as avg_impedance,
+    MIN(price) as min_price,
+    MAX(price) as max_price
+FROM headphones;
+
+-- Sair
+\q
+```
+
+### 3.8 Limpar Dados e Recomeçar
+
+**Opção 1: Remover apenas containers (mantém dados):**
+```bash
+docker-compose down
+```
+
+**Opção 2: Remover containers E volume (limpa tudo):**
+```bash
+docker-compose down -v
+# OU manualmente:
+docker-compose down
+docker volume rm postgres-data
+```
+
+**Opção 3: Limpeza completa + rebuild:**
+```bash
+docker-compose down -v
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+### 3.9 Recriar do Zero
+
+**Para garantir estado limpo:**
+```bash
+# 1. Parar tudo
+docker-compose down -v
+
+# 2. Remover imagens antigas
+docker rmi desafio2-headphones-catalog desafio2-headphones-reader
+
+# 3. Rebuild sem cache
+docker-compose build --no-cache
+
+# 4. Subir novamente
+docker-compose up -d
+
+# 5. Verificar logs
+docker-compose logs headphones-catalog
+# Deve mostrar: "✅ 8 headphones added successfully!"
+```
+
+### 3.10 Parar Aplicação
+
+**Manter dados (volume permanece):**
 ```bash
 ./stop.sh
+# OU:
+docker-compose down
 ```
 
-**Importante**: Este comando para os containers mas **mantém o volume**. Os dados permanecem salvos.
-
-Para remover também o volume (apagar dados):
+**Apagar tudo (incluindo dados):**
 ```bash
-docker compose down -v
+docker-compose down -v
 ```
 
-## 🧪 Exemplos de Saída
+---
 
-### Exemplo 1: Catalog Manager (População)
+## Observações Finais
 
-```
-================================================================================
-SISTEMA DE CATALOGO DE FONES DE OUVIDO AUDIOFILO
-================================================================================
-Banco de dados: postgres:5432/headphones_db
+**✅ Persistência Garantida:**
+O volume `postgres-data` é independente do ciclo de vida dos containers. Dados sobrevivem a `docker-compose down` e permanecem até remoção explícita com `docker volume rm` ou `docker-compose down -v`.
 
-Banco de dados inicializado: postgres:5432/headphones_db
+**✅ Idempotência:**
+O script `headphones_catalog.py` verifica se dados já existem antes de popular. Executar múltiplas vezes não cria duplicatas.
 
-Fones no catalogo: 0
+**✅ Segurança:**
+A porta PostgreSQL (5432) NÃO está exposta ao host. Apenas containers na mesma rede conseguem acessar o banco.
 
-Catalogo vazio. Adicionando dados de exemplo...
+**✅ Health Checks:**
+O `depends_on: condition: service_healthy` garante que o PostgreSQL está realmente pronto antes de executar scripts que dependem dele.
 
-Adicionando fones de exemplo ao catalogo...
-Fone adicionado: Sennheiser HD 800 S (ID: 1)
-Fone adicionado: Focal Clear MG (ID: 2)
-Fone adicionado: Audeze LCD-X (ID: 3)
-Fone adicionado: Beyerdynamic DT 1990 Pro (ID: 4)
-Fone adicionado: HiFiMAN Arya Stealth (ID: 5)
-Fone adicionado: AKG K701 (ID: 6)
-Fone adicionado: Audio-Technica ATH-M50x (ID: 7)
-Fone adicionado: Sony MDR-Z7M2 (ID: 8)
+**✅ Retry Logic:**
+Conexões ao banco implementam retry logic (30 tentativas) para lidar com delays de inicialização.
 
-Dados de exemplo adicionados com sucesso!
+**✅ Localização do Volume:**
+No Linux: `/var/lib/docker/volumes/postgres-data/_data`  
+No macOS/Windows: Dentro da VM do Docker Desktop
 
-====================================================================================================
-CATALOGO DE FONES DE OUVIDO AUDIOFILO
-====================================================================================================
-
-ID: 1
-Marca/Modelo: Sennheiser HD 800 S
-Tipo: Open-back Over-ear
-Driver: 56mm | Impedancia: 300ohms | Sensibilidade: 102dB
-Resposta de Frequencia: 4Hz - 51kHz
-Cabo: Detachable 6.3mm
-Peso: 330g
-Preco: $1699.99
-Assinatura Sonora: Neutral/Analytical
-Notas: Flagship open-back
-Adicionado em: 2025-11-18 10:30:15.123456
-----------------------------------------------------------------------------------------------------
-
-ID: 2
-Marca/Modelo: Focal Clear MG
-Tipo: Open-back Over-ear
-Driver: 40mm | Impedancia: 55ohms | Sensibilidade: 104dB
-Resposta de Frequencia: 5Hz - 28kHz
-Cabo: Detachable 3.5mm/6.3mm
-Peso: 450g
-Preco: $1490.00
-Assinatura Sonora: Balanced/Slightly Warm
-Notas: Magnesium drivers
-Adicionado em: 2025-11-18 10:30:15.234567
-----------------------------------------------------------------------------------------------------
-
-================================================================================
-ESTATISTICAS DO CATALOGO
-================================================================================
-Total de fones: 8
-Preco medio: $1035.62
-Impedancia media: 103ohms
-
-Tipos:
-   Open-back Over-ear: 6
-   Closed-back Over-ear: 2
-
-Marcas:
-   Sennheiser: 1
-   Focal: 1
-   Audeze: 1
-   Beyerdynamic: 1
-   HiFiMAN: 1
-   AKG: 1
-   Audio-Technica: 1
-   Sony: 1
-================================================================================
-
-Sistema executado com sucesso!
-Os dados foram salvos no PostgreSQL: postgres/headphones_db
-Mesmo removendo o container da aplicacao, os dados permanecerao no volume Docker
-================================================================================
-```
-
-### Exemplo 2: Catalog Reader (Leitura)
-
-```
-================================================================================
-LENDO CATALOGO DE FONES DE OUVIDO (CONTAINER LEITOR)
-================================================================================
-Conectando a: postgres:5432/headphones_db
-
-Total de fones encontrados: 8
-
-================================================================================
-LISTA DE FONES PERSISTIDOS
-================================================================================
-
-01 | Sennheiser HD 800 S
-   Open-back Over-ear
-   56mm | 300ohms | 102dB
-   $1699.99 | Neutral/Analytical
-
-02 | Focal Clear MG
-   Open-back Over-ear
-   40mm | 55ohms | 104dB
-   $1490.00 | Balanced/Slightly Warm
-
-03 | Audeze LCD-X
-   Open-back Over-ear
-   106mm | 20ohms | 103dB
-   $1199.00 | Neutral
-
-04 | Beyerdynamic DT 1990 Pro
-   Open-back Over-ear
-   45mm | 250ohms | 102dB
-   $599.00 | Bright/Analytical
-
-05 | HiFiMAN Arya Stealth
-   Open-back Over-ear
-   0mm | 32ohms | 94dB
-   $1299.00 | Neutral/Natural
-
-06 | AKG K701
-   Open-back Over-ear
-   44mm | 62ohms | 105dB
-   $249.00 | Neutral
-
-07 | Audio-Technica ATH-M50x
-   Closed-back Over-ear
-   45mm | 38ohms | 99dB
-   $149.00 | V-Shaped
-
-08 | Sony MDR-Z7M2
-   Closed-back Over-ear
-   70mm | 70ohms | 98dB
-   $899.00 | Warm
-
-================================================================================
-RESUMO ESTATISTICO
-================================================================================
-Preco medio: $1035.62
-Mais barato: $149.00
-Mais caro: $1699.99
-================================================================================
-
-Dados lidos com sucesso do banco persistente!
-Estes dados sobrevivem a remocao dos containers da aplicacao
-================================================================================
-```
-
-## 🔧 Explicação Técnica
-
-### Docker Compose - Orquestração dos Serviços
-
-O arquivo `docker compose .yml` define toda a infraestrutura:
-
-**Pontos-chave**:
-- `volumes` define o volume persistente que sobrevive aos containers
-- `healthcheck` garante que o banco está pronto antes dos apps rodarem
-- `depends_on` com `condition` aguarda health check
-- DNS interno resolve `postgres` para o IP do container
-- Variáveis de ambiente passam credenciais de forma segura
-
-### Dockerfile do Catalog Manager
-
-
-**Funcionamento**: Container executa script Python que conecta ao PostgreSQL, cria tabela, popula dados e exibe estatísticas.
-
-### Dockerfile do Catalog Reader
-
-**Funcionamento**: Container executa script Python que conecta ao PostgreSQL, lê todos os dados e exibe estatísticas.
-
-### Comunicação entre Containers
-
-```
-┌─────────────────────┐                          ┌─────────────────────┐
-│  headphones-catalog │ ─── psycopg2 connect ──▶ │ headphones-postgres │
-│  (Python)           │                          │ (PostgreSQL)        │
-│  172.20.0.3         │ ◀── Query Results ────── │ 172.20.0.2:5432    │
-└─────────────────────┘                          └──────────┬──────────┘
-                                                            │
-┌─────────────────────┐                                     │
-│  headphones-reader  │ ─── psycopg2 connect ──────────────┘
-│  (Python)           │                          
-│  172.20.0.4         │ ◀── Query Results ──────────────────┘
-└─────────────────────┘
-
-                            Volume persistente
-                      desafio2-postgres-data
-                   /var/lib/postgresql/data
-                            ↓
-                   Dados permanecem mesmo
-                   removendo containers!
-```
-
-1. PostgreSQL inicia e monta o volume
-2. Catalog Manager aguarda health check
-3. Manager conecta, cria tabela e popula dados
-4. Reader conecta e lê dados persistidos
-5. Dados ficam no volume, não nos containers
-
-### Retry Logic - Conexão Resiliente
-
-**Funcionamento**: Tenta conectar até 30 vezes com intervalo de 1 segundo. Garante que o banco esteja pronto antes de processar dados.
-
+**✅ Teste de Persistência:**
+Execute `./test-persistence.sh` para validar que dados realmente persistem após remoção de containers.

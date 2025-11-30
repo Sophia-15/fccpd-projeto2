@@ -5,12 +5,10 @@ import os
 
 app = Flask(__name__)
 
-# Garage Service URL (using Docker service name)
 GARAGE_SERVICE_URL = os.getenv("GARAGE_SERVICE_URL", "http://garage-service:5100")
 
 
 def get_cars_from_garage():
-    """Fetch cars from Garage Service"""
     try:
         response = requests.get(f"{GARAGE_SERVICE_URL}/cars", timeout=5)
         response.raise_for_status()
@@ -21,7 +19,6 @@ def get_cars_from_garage():
 
 
 def calculate_price_class(price):
-    """Classify car by price"""
     if price < 150000:
         return "Economy"
     elif price < 300000:
@@ -33,7 +30,6 @@ def calculate_price_class(price):
 
 
 def calculate_performance_class(horsepower):
-    """Classify car by performance"""
     if horsepower < 600:
         return "Standard"
     elif horsepower < 900:
@@ -43,7 +39,6 @@ def calculate_performance_class(horsepower):
 
 
 def calculate_days_in_garage(added_at):
-    """Calculate days since car was added"""
     try:
         added_date = datetime.fromisoformat(added_at)
         days = (datetime.now() - added_date).days
@@ -53,7 +48,6 @@ def calculate_days_in_garage(added_at):
 
 
 def get_status_analysis(status):
-    """Analyze status and provide description"""
     status_map = {
         "available": "Ready for use",
         "racing": "Currently in competition",
@@ -86,7 +80,6 @@ def index():
 
 @app.route("/report")
 def get_report():
-    """Generate complete report of all cars with analytics"""
     cars = get_cars_from_garage()
 
     if cars is None:
@@ -110,7 +103,6 @@ def get_report():
             }
         )
 
-    # Enrich each car with analytics
     enriched_cars = []
     for car in cars:
         enriched_car = car.copy()
@@ -136,7 +128,6 @@ def get_report():
 
 @app.route("/report/<int:car_id>")
 def get_car_report(car_id):
-    """Generate detailed report for a specific car"""
     cars = get_cars_from_garage()
 
     if cars is None:
@@ -164,19 +155,16 @@ def get_car_report(car_id):
             404,
         )
 
-    # Calculate performance scores (0-100 scale)
     acceleration_score = max(0, 100 - (car["acceleration"] - 2.0) * 20)
     speed_score = min(100, (car["top_speed"] / 250) * 100)
     power_score = min(100, (car["horsepower"] / 1500) * 100)
     performance_score = (acceleration_score + speed_score + power_score) / 3
 
-    # Find ranking in garage
     sorted_by_power = sorted(cars, key=lambda x: x["horsepower"], reverse=True)
     ranking = next(
         (i + 1 for i, c in enumerate(sorted_by_power) if c["id"] == car_id), 0
     )
 
-    # Category comparison
     same_category = [c for c in cars if c["category"] == car["category"]]
     if len(same_category) > 0:
         avg_category_hp = sum(c["horsepower"] for c in same_category) / len(
@@ -194,7 +182,6 @@ def get_car_report(car_id):
         hp_diff = 0
         speed_diff = 0
 
-    # Generate recommendations
     recommendations = []
     if performance_score > 90:
         recommendations.append("Excellent overall performance")
@@ -247,7 +234,6 @@ def get_car_report(car_id):
 
 @app.route("/summary")
 def get_summary():
-    """Generate executive summary with aggregations"""
     cars = get_cars_from_garage()
 
     if cars is None:
@@ -270,14 +256,12 @@ def get_summary():
             }
         )
 
-    # Calculate overview statistics
     total_value = sum(car["price"] for car in cars)
     avg_hp = sum(car["horsepower"] for car in cars) / len(cars)
     avg_speed = sum(car["top_speed"] for car in cars) / len(cars)
     avg_price = total_value / len(cars)
     avg_acceleration = sum(car["acceleration"] for car in cars) / len(cars)
 
-    # Group by category
     by_category = {}
     for car in cars:
         category = car["category"]
@@ -287,7 +271,6 @@ def get_summary():
         by_category[category]["total_hp"] += car["horsepower"]
         by_category[category]["total_price"] += car["price"]
 
-    # Calculate averages per category
     category_summary = {}
     for category, data in by_category.items():
         category_summary[category] = {
@@ -296,26 +279,22 @@ def get_summary():
             "avg_price": round(data["total_price"] / data["count"], 2),
         }
 
-    # Group by status
     by_status = {}
     for car in cars:
         status = car["status"]
         by_status[status] = by_status.get(status, 0) + 1
 
-    # Group by manufacturer
     by_manufacturer = {}
     for car in cars:
         manufacturer = car["manufacturer"]
         by_manufacturer[manufacturer] = by_manufacturer.get(manufacturer, 0) + 1
 
-    # Find top performers
     most_powerful = max(cars, key=lambda x: x["horsepower"])
     fastest = max(cars, key=lambda x: x["top_speed"])
     quickest = min(cars, key=lambda x: x["acceleration"])
     most_expensive = max(cars, key=lambda x: x["price"])
     best_value = min(cars, key=lambda x: x["price"] / x["horsepower"])
 
-    # Generate insights
     insights = []
     if len(cars) >= 10:
         insights.append(f"Garage has a substantial collection of {len(cars)} cars")
@@ -357,7 +336,6 @@ def get_summary():
 
 @app.route("/activity")
 def get_activity():
-    """Analyze garage activity and utilization"""
     cars = get_cars_from_garage()
 
     if cars is None:
@@ -380,26 +358,22 @@ def get_activity():
             }
         )
 
-    # Calculate utilization
     active_statuses = ["available", "racing"]
     active_cars = [c for c in cars if c["status"] in active_statuses]
     inactive_cars = [c for c in cars if c["status"] not in active_statuses]
 
     utilization_rate = (len(active_cars) / len(cars)) * 100 if cars else 0
 
-    # Count by status
     racing_count = sum(1 for c in cars if c["status"] == "racing")
     maintenance_count = sum(1 for c in cars if c["status"] == "maintenance")
     available_count = sum(1 for c in cars if c["status"] == "available")
     sold_count = sum(1 for c in cars if c["status"] == "sold")
 
-    # Efficiency metrics
     avg_hp_available = sum(
         c["horsepower"] for c in cars if c["status"] == "available"
     ) / max(available_count, 1)
     total_racing_power = sum(c["horsepower"] for c in cars if c["status"] == "racing")
 
-    # Category analysis
     category_analysis = {}
     for car in cars:
         category = car["category"]
@@ -419,11 +393,9 @@ def get_activity():
         elif car["status"] == "maintenance":
             category_analysis[category]["maintenance"] += 1
 
-    # Calculate availability rates per category
     for category, data in category_analysis.items():
         data["availability_rate"] = round((data["available"] / data["total"]) * 100, 2)
 
-    # Generate alerts
     alerts = []
     if maintenance_count > 0:
         alerts.append(f"{maintenance_count} car(s) in maintenance need attention")
@@ -462,15 +434,13 @@ def get_activity():
 
 @app.route("/health")
 def health():
-    """Health check that also verifies Garage Service"""
     timestamp = datetime.now().isoformat()
 
-    # Check Garage Service
     try:
         start_time = datetime.now()
         response = requests.get(f"{GARAGE_SERVICE_URL}/health", timeout=5)
         end_time = datetime.now()
-        latency = (end_time - start_time).total_seconds() * 1000  # in milliseconds
+        latency = (end_time - start_time).total_seconds() * 1000
 
         if response.status_code == 200:
             garage_status = "healthy"

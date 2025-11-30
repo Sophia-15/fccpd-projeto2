@@ -4,12 +4,10 @@ import os
 
 app = Flask(__name__)
 
-# In-memory database
 cars_db = []
 next_id = 1
 
 
-# Initialize with sample data
 def init_data():
     global next_id
     sample_cars = [
@@ -132,7 +130,6 @@ def init_data():
         next_id += 1
 
 
-# Initialize data on startup
 init_data()
 
 
@@ -161,7 +158,6 @@ def index():
 
 @app.route("/cars", methods=["GET"])
 def get_cars():
-    """List all cars in the garage"""
     return jsonify(
         {"service": "Garage Service", "total": len(cars_db), "cars": cars_db}
     )
@@ -169,7 +165,6 @@ def get_cars():
 
 @app.route("/cars/<int:car_id>", methods=["GET"])
 def get_car(car_id):
-    """Get a specific car by ID"""
     car = next((c for c in cars_db if c["id"] == car_id), None)
 
     if car:
@@ -180,12 +175,10 @@ def get_car(car_id):
 
 @app.route("/cars", methods=["POST"])
 def add_car():
-    """Add a new car to the garage"""
     global next_id
 
     data = request.get_json()
 
-    # Validate required fields
     required_fields = [
         "manufacturer",
         "model",
@@ -202,7 +195,6 @@ def add_car():
         if field not in data:
             return jsonify({"error": f"Missing required field: {field}"}), 400
 
-    # Validate status
     valid_statuses = ["available", "racing", "maintenance", "sold"]
     if data["status"] not in valid_statuses:
         return (
@@ -214,7 +206,6 @@ def add_car():
             400,
         )
 
-    # Validate category
     valid_categories = ["Hypercar", "Supercar", "Sports", "Luxury"]
     if data["category"] not in valid_categories:
         return (
@@ -226,7 +217,6 @@ def add_car():
             400,
         )
 
-    # Create new car
     new_car = {
         "id": next_id,
         "manufacturer": data["manufacturer"],
@@ -258,7 +248,6 @@ def add_car():
 
 @app.route("/cars/<int:car_id>", methods=["PUT"])
 def update_car(car_id):
-    """Update an existing car"""
     car = next((c for c in cars_db if c["id"] == car_id), None)
 
     if not car:
@@ -266,7 +255,6 @@ def update_car(car_id):
 
     data = request.get_json()
 
-    # Validate status if provided
     if "status" in data:
         valid_statuses = ["available", "racing", "maintenance", "sold"]
         if data["status"] not in valid_statuses:
@@ -279,7 +267,6 @@ def update_car(car_id):
                 400,
             )
 
-    # Validate category if provided
     if "category" in data:
         valid_categories = ["Hypercar", "Supercar", "Sports", "Luxury"]
         if data["category"] not in valid_categories:
@@ -292,7 +279,6 @@ def update_car(car_id):
                 400,
             )
 
-    # Update fields
     updatable_fields = [
         "manufacturer",
         "model",
@@ -316,7 +302,6 @@ def update_car(car_id):
 
 @app.route("/cars/<int:car_id>", methods=["DELETE"])
 def delete_car(car_id):
-    """Delete a car from the garage"""
     global cars_db
 
     car = next((c for c in cars_db if c["id"] == car_id), None)
@@ -338,7 +323,6 @@ def delete_car(car_id):
 
 @app.route("/stats")
 def get_stats():
-    """Get inventory statistics"""
     if not cars_db:
         return jsonify(
             {
@@ -353,19 +337,16 @@ def get_stats():
     avg_speed = sum(car["top_speed"] for car in cars_db) / len(cars_db)
     avg_price = total_value / len(cars_db)
 
-    # Count by status
     by_status = {}
     for car in cars_db:
         status = car["status"]
         by_status[status] = by_status.get(status, 0) + 1
 
-    # Count by category
     by_category = {}
     for car in cars_db:
         category = car["category"]
         by_category[category] = by_category.get(category, 0) + 1
 
-    # Find extremes
     most_powerful = max(cars_db, key=lambda x: x["horsepower"])
     fastest = max(cars_db, key=lambda x: x["top_speed"])
     quickest = min(cars_db, key=lambda x: x["acceleration"])
@@ -395,7 +376,6 @@ def get_stats():
 
 @app.route("/health")
 def health():
-    """Health check endpoint"""
     return jsonify(
         {
             "service": "Garage Service",
